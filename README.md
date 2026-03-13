@@ -37,13 +37,7 @@ powershell -ExecutionPolicy Bypass -File "league-of-skins-inventory.ps1"
 
 👉 **[Перейти в раздел Releases](https://github.com/valeriadmitrievna-dev/league-of-skins-inventory/releases)** 👈
 
-Там можно скачать:
-
--   📁 Готовый архив с файлами (для обычных пользователей)
-    
--   📦 Исходный код (для разработчиков)
-    
--   📜 История изменений
+Там можно скачать готовый архив с файлами
     
 
 ----------
