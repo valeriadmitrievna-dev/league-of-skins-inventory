@@ -54,7 +54,7 @@ try {
     $response.Close()
     
     # Сохраняем сырые данные
-    $responseText | Out-File "inventory.json" -Encoding UTF8
+    [System.IO.File]::WriteAllText("inventory.json", $responseText)
     Write-Host "Raw data saved to inventory.json" -ForegroundColor Green
     
     # Конвертируем JSON
