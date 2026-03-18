@@ -2,6 +2,9 @@ Write-Host "Getting your purchased skins..." -ForegroundColor Cyan
 
 $possiblePaths = @(
     "C:\Riot Games\League of Legends\lockfile",
+    "D:\Riot Games\League of Legends\lockfile",
+    "E:\Riot Games\League of Legends\lockfile",
+    "F:\Riot Games\League of Legends\lockfile",
     "$env:USERPROFILE\AppData\Local\Riot Games\League of Legends\Config\lockfile",
     "$env:USERPROFILE\AppData\Local\Riot Games\Riot Client\Config\lockfile"
 )
@@ -35,19 +38,6 @@ Write-Host "Port: $port" -ForegroundColor Cyan
 
 $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("riot:$password"))
 $url = "https://127.0.0.1:$port/lol-inventory/v2/inventory/CHAMPION_SKIN"
-
-$testUrl = "https://127.0.0.1:$port/lol-summoner/v1/current-summoner"
-
-try {
-    $testRequest = [System.Net.WebRequest]::Create($testUrl)
-    $testRequest.Method = "GET"
-    $testRequest.Headers.Add("Authorization", "Basic $auth")
-    $testResponse = $testRequest.GetResponse()
-    $testResponse.Close()
-} catch {
-    Write-Host "This is not a League Client (LCU) lockfile!" -ForegroundColor Red
-    exit
-}
 
 Write-Host "`nConnecting to LCU..." -ForegroundColor Yellow
 
