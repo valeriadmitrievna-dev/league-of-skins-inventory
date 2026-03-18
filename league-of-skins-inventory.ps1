@@ -1,5 +1,6 @@
-# get_my_skins.ps1
-Write-Host "Getting your purchased skins..." -ForegroundColor Cyan
+# get_my_skins_diagnostic.ps1
+Write-Host "League of Legends Inventory Diagnostic" -ForegroundColor Cyan
+Write-Host "======================================" -ForegroundColor Cyan
 
 $possiblePaths = @(
     "C:\Riot Games\League of Legends\lockfile",
@@ -19,7 +20,6 @@ foreach ($path in $possiblePaths) {
 
 if (-not $lockfileFound) {
     Write-Host "ERROR: League of Legends is not running!" -ForegroundColor Red
-    Write-Host "Please start League of Legends and try again." -ForegroundColor Yellow
     pause
     exit
 }
@@ -31,79 +31,123 @@ $password = $parts[3]
 
 Write-Host "Port: $port" -ForegroundColor Cyan
 
-[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
 $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("riot:$password"))
 
-Write-Host "`n[Diagnostic] Checking basic connection..." -ForegroundColor Yellow
-$testUrl = "https://127.0.0.1:$port/lol-summoner/v1/current-summoner"
-try {
-    $testRequest = [System.Net.WebRequest]::Create($testUrl)
-    $testRequest.Method = "GET"
-    $testRequest.Headers.Add("Authorization", "Basic $auth")
-    $testRequest.Timeout = 3000
-    $testResponse = $testRequest.GetResponse()
-    Write-Host "[OK] Basic connection works" -ForegroundColor Green
-    $testResponse.Close()
-} catch {
-    Write-Host "[ERROR] Cannot connect to basic API: $_" -ForegroundColor Red
-    pause
-    exit
+Write-Host "`nTesting basic endpoints..." -ForegroundColor Yellow
+
+$basicEndpoints = @(
+    "/lol-summoner/v1/current-summoner",
+    "/lol-chat/v1/me",
+    "/lol-platform-config/v1/namespaces"
+)
+
+foreach ($endpoint in $basicEndpoints) {
+    $url = "https://127.0.0.1:$port$endpoint"
+    try {
+        $request = [System.Net.WebRequest]::Create($url)
+        $request.Method = "GET"
+        $request.Headers.Add("Authorization", "Basic $auth")
+        $request.Timeout = 2000
+        $response = $request.GetResponse()
+        $statusCode = $response.StatusCode
+        $response.Close()
+        Write-Host "  OK - $endpoint - $statusCode" -ForegroundColor Green
+    }
+    catch {
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            Write-Host "  FAIL - $endpoint - $statusCode" -ForegroundColor Red
+        }
+        else {
+            Write-Host "  FAIL - $endpoint - Connection error" -ForegroundColor Red
+        }
+    }
 }
 
-$url = "https://127.0.0.1:$port/lol-inventory/v2/inventory/CHAMPION_SKIN"
-Write-Host "`nConnecting to LCU Inventory API..." -ForegroundColor Yellow
+Write-Host "`nTesting skin inventory endpoints..." -ForegroundColor Yellow
 
-try {
-    $request = [System.Net.WebRequest]::Create($url)
-    $request.Method = "GET"
-    $request.Headers.Add("Authorization", "Basic $auth")
-    $request.ContentType = "application/json"
-    $request.Accept = "application/json"
-    $request.Timeout = 5000
+$skinEndpoints = @(
+    "/lol-inventory/v2/inventory/CHAMPION_SKIN",
+    "/lol-inventory/v1/inventory/CHAMPION_SKIN",
+    "/lol-inventory/v1/inventory/CHAMPION_SKIN_OWNED",
+    "/lol-collections/v1/inventories/1/skins",
+    "/lol-collections/v1/inventories/1/skins-minimal",
+    "/lol-champions/v1/inventories/1/skins",
+    "/lol-champions/v1/inventories/1/skins-minimal",
+    "/lol-skins/v1/skins",
+    "/lol-skins/v1/inventory",
+    "/lol-skins/v1/skins-owned",
+    "/lol-store/v1/entitlements/CHAMPION_SKIN",
+    "/lol-store/v1/entitlements?itemType=CHAMPION_SKIN"
+)
+
+$workingEndpoints = @()
+
+foreach ($endpoint in $skinEndpoints) {
+    $url = "https://127.0.0.1:$port$endpoint"
+    Write-Host "Testing: $endpoint" -NoNewline
     
-    $response = $request.GetResponse()
-    $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
-    $responseText = $reader.ReadToEnd()
-    $reader.Close()
-    $response.Close()
-    
-    [System.IO.File]::WriteAllText("inventory.json", $responseText)
-    Write-Host "Raw data saved to inventory.json" -ForegroundColor Green
-    
-    $skinsData = $responseText | ConvertFrom-Json
-    $skinIds = @()
-    
-    if ($skinsData -is [array]) {
-        $skinIds = $skinsData
-    } else {
-        foreach ($property in $skinsData.PSObject.Properties) {
-            if ($property.Value -is [PSCustomObject] -and $property.Value.itemId) {
-                $skinIds += $property.Value.itemId
-            } elseif ($property.Value -match '^\d+$') {
-                $skinIds += $property.Value
+    try {
+        $request = [System.Net.WebRequest]::Create($url)
+        $request.Method = "GET"
+        $request.Headers.Add("Authorization", "Basic $auth")
+        $request.Timeout = 2000
+        
+        $response = $request.GetResponse()
+        $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+        $responseText = $reader.ReadToEnd()
+        $reader.Close()
+        $response.Close()
+        
+        $size = $responseText.Length
+        Write-Host " - OK (200) - $size bytes" -ForegroundColor Green
+        
+        if ($size -gt 10) {
+            $workingEndpoints += $endpoint
+            if ($workingEndpoints.Count -eq 1) {
+                [System.IO.File]::WriteAllText("inventory.json", $responseText)
+                Write-Host "  -> Saved to inventory.json" -ForegroundColor Yellow
             }
         }
     }
+    catch {
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            Write-Host " - FAIL ($statusCode)" -ForegroundColor Red
+        }
+        else {
+            Write-Host " - ERROR" -ForegroundColor Red
+        }
+    }
+}
+
+if ($workingEndpoints.Count -gt 0) {
+    Write-Host "`nWorking endpoints found:" -ForegroundColor Green
+    foreach ($ep in $workingEndpoints) {
+        Write-Host "  $ep" -ForegroundColor Cyan
+    }
+    Write-Host "`nData saved to inventory.json" -ForegroundColor Green
+}
+else {
+    Write-Host "`nNo working skin inventory endpoints found" -ForegroundColor Red
     
-    $skinIds = $skinIds | Where-Object {$_ -and $_ -ne $null} | Sort-Object -Unique
-    
-    Write-Host "`nSuccess!" -ForegroundColor Green
-    Write-Host "Found $($skinIds.Count) purchased skins" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Files created:" -ForegroundColor Cyan
-    Write-Host "inventory.json (raw data)" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Location: $((Get-Location).Path)" -ForegroundColor Gray
-    
-} catch {
-    Write-Host "Error: $_" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Possible reasons:" -ForegroundColor Yellow
-    Write-Host "1. LoL client is not fully loaded (wait a minute and try again)" -ForegroundColor Yellow
-    Write-Host "2. You are in game (inventory endpoint may be unavailable during match)" -ForegroundColor Yellow
-    Write-Host "3. Network or antivirus issues" -ForegroundColor Yellow
+    Write-Host "`nTrying to get API documentation..." -ForegroundColor Yellow
+    $swaggerUrl = "https://127.0.0.1:$port/swagger/v2/swagger.json"
+    try {
+        $request = [System.Net.WebRequest]::Create($swaggerUrl)
+        $request.Method = "GET"
+        $request.Headers.Add("Authorization", "Basic $auth")
+        $request.Timeout = 2000
+        $response = $request.GetResponse()
+        Write-Host "Swagger documentation available" -ForegroundColor Green
+        $response.Close()
+    }
+    catch {
+        Write-Host "No swagger documentation" -ForegroundColor Red
+    }
 }
 
 pause
